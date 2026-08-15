@@ -1,0 +1,1425 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HOLO/CARD — tuning bench</title>
+<style>
+  /* ---------- registered custom properties so pointer vars can transition ---------- */
+  @property --px { syntax: "<number>"; inherits: true; initial-value: 0.5; }
+  @property --py { syntax: "<number>"; inherits: true; initial-value: 0.5; }
+
+  :root {
+    --foil: 0.75;
+    --sparkle: 0.55;
+    --glare: 0.55;
+    --band: 110deg;
+    --max-tilt: 16deg;
+
+    --tier-frame: linear-gradient(155deg, #f0cd7a, #a06be0 38%, #4fc3f7 72%, #f0cd7a);
+    --tier-glow: rgba(150, 110, 255, 0.35);
+    --tier-chip-bg: linear-gradient(120deg, #f0cd7a, #b07ae8);
+    --tier-chip-fg: #1c1030;
+
+    --ink: #e8e6f0;
+    --ink-dim: #9a96ad;
+    --panel-bg: rgba(20, 20, 32, 0.85);
+    --panel-line: rgba(255, 255, 255, 0.08);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { height: 100%; background: #060510; }
+  body {
+    min-height: 100%;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink);
+    background:
+      radial-gradient(120% 90% at 50% 0%, #191627 0%, #0d0b16 55%, #060510 100%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 20px;
+  }
+
+  .stage {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 48px;
+    align-items: center;
+    justify-content: center;
+    max-width: 980px;
+    width: 100%;
+  }
+
+  /* =============================== CARD =============================== */
+
+  .card-zone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+  }
+
+  .scene {
+    perspective: 1100px;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    cursor: grab;
+    /* pointer vars ease back when released; .dragging kills the lag */
+    transition: --px 0.55s cubic-bezier(0.22, 0.7, 0.3, 1),
+                --py 0.55s cubic-bezier(0.22, 0.7, 0.3, 1);
+  }
+  .scene.dragging { transition: none; cursor: grabbing; }
+
+  .tilt {
+    width: min(340px, 78vw);
+    aspect-ratio: 5 / 7;
+    transform-style: preserve-3d;
+    transform: rotateX(calc((0.5 - var(--py)) * 2 * var(--max-tilt)))
+               rotateY(calc((var(--px) - 0.5) * 2 * var(--max-tilt)));
+  }
+
+  .flipper {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transform: rotateY(0deg);
+    transition: transform 0.72s cubic-bezier(0.35, 0.1, 0.2, 1);
+  }
+  .scene.flipped .flipper { transform: rotateY(180deg); }
+
+  .face {
+    position: absolute;
+    inset: 0;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    border-radius: 20px;
+    padding: 9px;
+    background: var(--tier-frame);
+    box-shadow:
+      0 1px 0 rgba(255, 255, 255, 0.25) inset,
+      0 -1px 0 rgba(0, 0, 0, 0.4) inset,
+      calc((0.5 - var(--px)) * 34px) calc((0.5 - var(--py)) * 26px + 24px) 48px -14px rgba(0, 0, 0, 0.65),
+      0 24px 70px -18px var(--tier-glow);
+  }
+  .face.back { transform: rotateY(180deg); }
+
+  .face .inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    border-radius: 13px;
+    overflow: hidden;
+    isolation: isolate;              /* keeps blend modes inside the card */
+    background: #0b0a14;
+    transform: translateZ(0);
+  }
+
+  .layer { position: absolute; inset: 0; pointer-events: none; }
+
+  /* glassy lip around the art window, above the blend stack */
+  .face .inner::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.09),
+      inset 0 12px 24px -14px rgba(255, 255, 255, 0.35),
+      inset 0 -14px 26px -18px rgba(0, 0, 0, 0.7);
+    pointer-events: none;
+  }
+
+  /* 1 — artwork */
+  .photo {
+    background-color: #171233;
+    background-size: cover;
+    background-position: center;
+  }
+
+  /* 2 — rainbow foil: repeating gradient, oversized, panned by the pointer */
+  .foil {
+    background-image:
+      repeating-linear-gradient(var(--band),
+        hsl(2 95% 61%) 0%,
+        hsl(40 100% 60%) 5.5%,
+        hsl(85 90% 56%) 11%,
+        hsl(175 92% 55%) 16.5%,
+        hsl(222 100% 66%) 22%,
+        hsl(285 92% 64%) 27.5%,
+        hsl(2 95% 61%) 33%),
+      repeating-linear-gradient(calc(var(--band) + 63deg),
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.35) 2.6%,
+        rgba(120, 80, 200, 0.18) 4.4%,
+        rgba(0, 0, 0, 0.28) 6.4%,
+        rgba(255, 255, 255, 0) 9%);
+    background-size: 240% 240%, 320% 320%;
+    background-position:
+      calc(var(--px) * 100%) calc(var(--py) * 100%),
+      calc((1 - var(--px)) * 100%) calc((1 - var(--py)) * 100%);
+    background-blend-mode: overlay;
+    mix-blend-mode: overlay;         /* NOT color-dodge — that nukes the midtones */
+    filter: saturate(calc(0.7 + var(--foil) * 0.65)) contrast(1.05);
+    opacity: min(0.92, calc(var(--foil) * 0.82));
+  }
+
+  /* 3 — glitter: four tiled dot fields, each parallaxing at its own rate.
+     Dots sit off-center in each tile (different corner per field) so the four
+     lattices interleave instead of lining up into a visible grid. */
+  .sparkle {
+    background-image:
+      radial-gradient(circle at 21% 33%, rgba(255, 255, 255, 0.95) 0 0.7px, rgba(255, 255, 255, 0) 1.5px),
+      radial-gradient(circle at 72% 64%, rgba(255, 236, 204, 0.9) 0 0.9px,  rgba(255, 255, 255, 0) 1.8px),
+      radial-gradient(circle at 44% 82%, rgba(205, 232, 255, 0.9) 0 1.1px,  rgba(255, 255, 255, 0) 2.2px),
+      radial-gradient(circle at 81% 17%, rgba(255, 255, 255, 1) 0 1.2px,
+                      rgba(255, 255, 255, 0.25) 2.3px, rgba(255, 255, 255, 0) 4.5px);
+    background-size: 26px 26px, 41px 41px, 59px 59px, 83px 83px;
+    background-position:
+      calc(var(--px) * -18px) calc(var(--py) * -12px),
+      calc(var(--px) *  26px) calc(var(--py) *  20px),
+      calc(var(--px) * -44px) calc(var(--py) *  34px),
+      calc(var(--px) *  62px) calc(var(--py) * -52px);
+    mix-blend-mode: screen;
+    opacity: min(1, calc(var(--sparkle) * 1.15));
+    -webkit-mask-image: radial-gradient(95% 75% at calc(var(--px) * 100%) calc(var(--py) * 100%),
+      rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0.06) 75%);
+    mask-image: radial-gradient(95% 75% at calc(var(--px) * 100%) calc(var(--py) * 100%),
+      rgba(0, 0, 0, 1) 0%, rgba(0, 0, 0, 0.4) 40%, rgba(0, 0, 0, 0.06) 75%);
+  }
+
+  /* 4 — glare hotspot riding the pointer */
+  .glare {
+    background: radial-gradient(farthest-corner circle at calc(var(--px) * 100%) calc(var(--py) * 100%),
+      rgba(255, 255, 255, 0.85) 0%,
+      rgba(255, 255, 255, 0.28) 22%,
+      rgba(60, 50, 90, 0.22) 58%,
+      rgba(0, 0, 0, 0.35) 100%);
+    mix-blend-mode: overlay;
+    opacity: var(--glare);
+  }
+
+  /* 5 — name plate */
+  .plate {
+    top: auto;
+    padding: 42px 14px 12px;
+    background: linear-gradient(rgba(8, 6, 18, 0) 0%, rgba(8, 6, 18, 0.72) 46%, rgba(8, 6, 18, 0.92) 100%);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .plate .name {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+  }
+  .plate .sub {
+    margin-top: 3px;
+    font-size: 10.5px;
+    letter-spacing: 0.22em;
+    color: var(--ink-dim);
+    text-transform: uppercase;
+  }
+  .chip {
+    flex: none;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 5px 9px 4px;
+    border-radius: 999px;
+    background: var(--tier-chip-bg);
+    color: var(--tier-chip-fg);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35) inset, 0 2px 8px rgba(0, 0, 0, 0.45);
+  }
+
+  /* ------------------------------- back face ------------------------------- */
+  .back .inner {
+    background:
+      radial-gradient(90% 70% at 50% 12%, #201a38 0%, #0d0a1a 60%, #080614 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+  .back .backfoil {
+    background-image: repeating-linear-gradient(calc(var(--band) + 20deg),
+      hsl(260 80% 60% / 0.5) 0%, hsl(190 90% 55% / 0.5) 9%, hsl(320 80% 60% / 0.5) 18%);
+    background-size: 260% 260%;
+    background-position: calc(var(--px) * 100%) calc(var(--py) * 100%);
+    mix-blend-mode: overlay;
+    opacity: 0.55;
+  }
+  .back .backglare {
+    background: radial-gradient(farthest-corner circle at calc(var(--px) * 100%) calc(var(--py) * 100%),
+      rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.12) 30%, rgba(0, 0, 0, 0.3) 100%);
+    mix-blend-mode: overlay;
+    opacity: 0.5;
+  }
+  .back .mark {
+    font-size: 34px;
+    line-height: 1;
+    background: linear-gradient(135deg, #f0cd7a, #a06be0, #4fc3f7);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    filter: drop-shadow(0 2px 10px rgba(120, 90, 220, 0.5));
+  }
+  .back .brand {
+    margin-top: 10px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.42em;
+    text-indent: 0.42em;
+    color: var(--ink);
+  }
+  .back .meta {
+    margin-top: 26px;
+    width: 78%;
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .back .meta div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 2px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .back .meta dt { color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.18em; font-size: 9px; padding-top: 1px; }
+  .back .meta dd { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--ink); text-align: right; }
+  .back .serial {
+    margin-top: 26px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    color: #cfc8ea;
+  }
+  .back .barcode {
+    margin-top: 10px;
+    width: 58%;
+    height: 26px;
+    background: repeating-linear-gradient(90deg,
+      #cfc8ea 0 2px, transparent 2px 5px, #cfc8ea 5px 6px, transparent 6px 11px,
+      #cfc8ea 11px 14px, transparent 14px 16px);
+    opacity: 0.8;
+  }
+
+  .hint {
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  /* =============================== PANEL =============================== */
+
+  .panel {
+    width: 300px;
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-line);
+    border-radius: 16px;
+    padding: 20px 20px 16px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.8);
+  }
+  .panel h1 {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 16px;
+  }
+  .panel h1 b { color: var(--ink); }
+
+  /* ------- photo input ------- */
+  .dropzone {
+    display: block;
+    position: relative;
+    border: 1.5px dashed rgba(160, 122, 232, 0.45);
+    border-radius: 12px;
+    background: rgba(160, 122, 232, 0.07);
+    padding: 20px 14px 18px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    margin-bottom: 10px;
+  }
+  .dropzone:hover, .dropzone.drag {
+    border-color: #a07ae8;
+    background: rgba(160, 122, 232, 0.16);
+  }
+  .dropzone input {
+    position: absolute;
+    width: 1px; height: 1px;
+    opacity: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .dropzone .dz-big {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+  }
+  .dropzone .dz-small {
+    margin-top: 4px;
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  .ghost {
+    display: block;
+    width: 100%;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 8px 0;
+    border-radius: 8px;
+    border: 1px solid var(--panel-line);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--ink-dim);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+    margin-bottom: 16px;
+  }
+  .ghost:hover { background: rgba(255, 255, 255, 0.09); color: var(--ink); }
+
+  .tiers {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-bottom: 18px;
+  }
+  .tiers button {
+    font: inherit;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding: 8px 0 7px;
+    border-radius: 8px;
+    border: 1px solid var(--panel-line);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--ink-dim);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .tiers button:hover { background: rgba(255, 255, 255, 0.09); color: var(--ink); }
+  .tiers button[aria-pressed="true"] {
+    background: rgba(160, 120, 255, 0.18);
+    border-color: rgba(160, 120, 255, 0.55);
+    color: #e6dcff;
+  }
+
+  .ctl { margin-bottom: 13px; }
+  .ctl label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    margin-bottom: 5px;
+  }
+  .ctl output {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: var(--ink);
+    letter-spacing: 0;
+  }
+  .ctl input[type="range"] {
+    width: 100%;
+    accent-color: #a07ae8;
+    cursor: pointer;
+  }
+
+  .readout {
+    margin-top: 6px;
+    position: relative;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid var(--panel-line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 11.5px;
+    line-height: 1.75;
+    color: #b9e3c6;
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .readout .copy {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    font: inherit;
+    font-size: 9.5px;
+    padding: 3px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--panel-line);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--ink-dim);
+    cursor: pointer;
+  }
+  .readout .copy:hover { color: var(--ink); background: rgba(255, 255, 255, 0.12); }
+
+  /* ------- export ------- */
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    margin-top: 14px;
+  }
+  .actions button {
+    font: inherit;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 10px 0 9px;
+    border-radius: 8px;
+    border: 1px solid rgba(160, 120, 255, 0.4);
+    background: rgba(160, 120, 255, 0.14);
+    color: #e6dcff;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .actions button:hover { background: rgba(160, 120, 255, 0.26); border-color: rgba(160, 120, 255, 0.7); }
+  .actions button:disabled { opacity: 0.45; cursor: default; }
+  .actions button[hidden] { display: none; }
+
+  .status {
+    min-height: 15px;
+    margin-top: 8px;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    color: var(--ink-dim);
+  }
+  .exportPreview {
+    display: none;
+    width: 100%;
+    margin-top: 10px;
+    border-radius: 10px;
+    border: 1px solid var(--panel-line);
+  }
+  .exportPreview.show { display: block; }
+
+  /* =========================== reduced motion =========================== */
+  @media (prefers-reduced-motion: reduce) {
+    .scene { transition: none; }
+    .flipper { transition: transform 0.001s; }
+  }
+
+  @media (max-width: 760px) {
+    body { padding: 24px 14px; }
+    .stage { gap: 30px; }
+    .panel { width: min(340px, 92vw); }
+  }
+</style>
+</head>
+<body>
+<main class="stage">
+
+  <section class="card-zone">
+    <div class="scene" id="scene" data-tier="holo">
+      <div class="tilt" id="tilt">
+        <div class="flipper" id="flipper">
+
+          <div class="face front">
+            <div class="inner">
+              <div class="layer photo"  id="photo"></div>
+              <div class="layer foil"></div>
+              <div class="layer sparkle"></div>
+              <div class="layer glare"></div>
+              <div class="layer plate">
+                <div>
+                  <div class="name" id="cardName">NEBULA WARDEN</div>
+                  <div class="sub" id="cardSub">Celestial &middot; 042 / 500</div>
+                </div>
+                <span class="chip" id="chip">Holo</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="face back">
+            <div class="inner">
+              <div class="layer backfoil"></div>
+              <div class="layer backglare"></div>
+              <div class="mark">&#9670;</div>
+              <div class="brand">HOLO/CARD</div>
+              <dl class="meta">
+                <div><dt>Minted</dt><dd id="mintDate">—</dd></div>
+                <div><dt>Time</dt><dd id="mintTime">—</dd></div>
+                <div><dt>Source</dt><dd>index.html &middot; local</dd></div>
+                <div><dt>Tier</dt><dd id="backTier">holo</dd></div>
+              </dl>
+              <div class="serial" id="serial">—</div>
+              <div class="barcode"></div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+    <p class="hint">drag to tilt &middot; click to flip</p>
+  </section>
+
+  <aside class="panel">
+    <h1><b>HOLO/CARD</b> &middot; tuning bench</h1>
+
+    <label class="dropzone" id="dropzone">
+      <input id="fileInput" type="file" accept="image/*,.heic,.heif">
+      <div class="dz-big">Add your photo</div>
+      <div class="dz-small">tap to choose &middot; drag &amp; drop &middot; paste</div>
+    </label>
+    <button class="ghost" id="clipBtn" hidden>Paste from clipboard</button>
+
+    <div class="tiers" id="tiers">
+      <button data-tier="common">Common</button>
+      <button data-tier="rare">Rare</button>
+      <button data-tier="holo" aria-pressed="true">Holo</button>
+      <button data-tier="secret">Secret</button>
+    </div>
+
+    <div class="ctl">
+      <label for="s-foil">Foil <output id="o-foil">0.75</output></label>
+      <input id="s-foil" type="range" min="0" max="1.5" step="0.01" value="0.75">
+    </div>
+    <div class="ctl">
+      <label for="s-sparkle">Sparkle <output id="o-sparkle">0.55</output></label>
+      <input id="s-sparkle" type="range" min="0" max="1.5" step="0.01" value="0.55">
+    </div>
+    <div class="ctl">
+      <label for="s-glare">Glare <output id="o-glare">0.55</output></label>
+      <input id="s-glare" type="range" min="0" max="1" step="0.01" value="0.55">
+    </div>
+    <div class="ctl">
+      <label for="s-band">Band angle <output id="o-band">110&deg;</output></label>
+      <input id="s-band" type="range" min="0" max="180" step="1" value="110">
+    </div>
+    <div class="ctl">
+      <label for="s-tilt">Max tilt <output id="o-tilt">16&deg;</output></label>
+      <input id="s-tilt" type="range" min="0" max="30" step="1" value="16">
+    </div>
+
+    <div class="readout" id="readout"><button class="copy" id="copyBtn">copy</button></div>
+
+    <div class="actions">
+      <button id="pngBtn">Export PNG</button>
+      <button id="vidBtn">Export video</button>
+    </div>
+    <div class="status" id="status"></div>
+    <img class="exportPreview" id="exportPreview" alt="Last export preview">
+  </aside>
+
+</main>
+
+<script>
+(function () {
+  "use strict";
+
+  var root = document.documentElement;
+  var scene = document.getElementById("scene");
+  var chip = document.getElementById("chip");
+  var backTier = document.getElementById("backTier");
+  var statusEl = document.getElementById("status");
+  var reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+
+  function setStatus(msg) { statusEl.textContent = msg || ""; }
+
+  /* ------------------------- placeholder artwork (inline SVG) ------------------------- */
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  var rand = mulberry32(1337);
+  var stars = "";
+  for (var i = 0; i < 90; i++) {
+    var sx = (rand() * 500).toFixed(1);
+    var sy = (rand() * 430).toFixed(1);
+    var sr = (0.5 + rand() * 1.4).toFixed(2);
+    var so = (0.35 + rand() * 0.65).toFixed(2);
+    stars += '<circle cx="' + sx + '" cy="' + sy + '" r="' + sr + '" fill="#fff" opacity="' + so + '"/>';
+  }
+  var svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="500" height="700" viewBox="0 0 500 700">' +
+      '<defs>' +
+        '<linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0" stop-color="#120b2e"/><stop offset="0.45" stop-color="#2c1660"/>' +
+          '<stop offset="0.72" stop-color="#7a2f7d"/><stop offset="1" stop-color="#e0607a"/>' +
+        '</linearGradient>' +
+        '<radialGradient id="moonGlow" cx="0.5" cy="0.5" r="0.5">' +
+          '<stop offset="0" stop-color="#ffe9c9" stop-opacity="0.9"/>' +
+          '<stop offset="0.35" stop-color="#ffca8f" stop-opacity="0.35"/>' +
+          '<stop offset="1" stop-color="#ffca8f" stop-opacity="0"/>' +
+        '</radialGradient>' +
+        '<linearGradient id="m1" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0" stop-color="#4d2a72"/><stop offset="1" stop-color="#2a1747"/>' +
+        '</linearGradient>' +
+        '<linearGradient id="m2" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0" stop-color="#331d55"/><stop offset="1" stop-color="#180e30"/>' +
+        '</linearGradient>' +
+        '<linearGradient id="m3" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0" stop-color="#1c1038"/><stop offset="1" stop-color="#0c081e"/>' +
+        '</linearGradient>' +
+        '<linearGradient id="mist" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0" stop-color="#e0607a" stop-opacity="0"/>' +
+          '<stop offset="1" stop-color="#ff9d8a" stop-opacity="0.35"/>' +
+        '</linearGradient>' +
+      '</defs>' +
+      '<rect width="500" height="700" fill="url(#sky)"/>' +
+      stars +
+      '<circle cx="358" cy="178" r="150" fill="url(#moonGlow)"/>' +
+      '<circle cx="358" cy="178" r="62" fill="#ffe9c9"/>' +
+      '<circle cx="336" cy="160" r="11" fill="#f3cf9f" opacity="0.75"/>' +
+      '<circle cx="376" cy="196" r="8" fill="#f3cf9f" opacity="0.6"/>' +
+      '<circle cx="352" cy="206" r="5" fill="#f3cf9f" opacity="0.6"/>' +
+      '<ellipse cx="358" cy="182" rx="108" ry="26" fill="none" stroke="#ffd9a8" stroke-opacity="0.55" stroke-width="5" transform="rotate(-14 358 182)"/>' +
+      '<path d="M60 96 L200 178" stroke="#fff" stroke-opacity="0.8" stroke-width="2" stroke-linecap="round"/>' +
+      '<circle cx="202" cy="179" r="3.4" fill="#fff"/>' +
+      '<path d="M0 430 L70 330 L128 402 L196 300 L268 412 L330 348 L410 430 L500 360 L500 700 L0 700 Z" fill="url(#m1)"/>' +
+      '<path d="M0 500 L90 402 L170 480 L262 386 L352 492 L436 420 L500 470 L500 700 L0 700 Z" fill="url(#m2)"/>' +
+      '<path d="M0 590 L110 490 L214 578 L320 478 L420 580 L500 520 L500 700 L0 700 Z" fill="url(#m3)"/>' +
+      '<rect y="430" width="500" height="270" fill="url(#mist)"/>' +
+    '</svg>';
+
+  /* ------------------------------- photo pipeline -------------------------------
+     Every input path funnels into loadImageFile → FileReader.readAsDataURL
+     (NEVER createObjectURL — blob: URLs are blocked by some in-app browser CSPs)
+     → smart-crop to the card's 2.5:3.5 ratio on a max-1000×1400 canvas (which is
+     also the downscale step for huge photos) → data URL for CSS, canvas kept
+     for export. HEIC rides the same path: browsers that decode it (Safari)
+     just work, others land in onerror with a friendly message. */
+  var photoCanvas = null;         /* 1000×1400 cropped master, used by the export renderer */
+  var photoLayer = document.getElementById("photo");
+
+  function cropToCard(img) {
+    var W = 1000, H = 1400;
+    var c = document.createElement("canvas");
+    c.width = W; c.height = H;
+    var ctx = c.getContext("2d");
+    var iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+    var scale = Math.max(W / iw, H / ih);   /* cover: fill, center, never squash */
+    var sw = W / scale, sh = H / scale;
+    var sx = (iw - sw) / 2, sy = (ih - sh) / 2;
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, W, H);
+    return c;
+  }
+
+  function setPhotoFromImage(img) {
+    photoCanvas = cropToCard(img);
+    photoLayer.style.backgroundImage = 'url("' + photoCanvas.toDataURL("image/jpeg", 0.92) + '")';
+  }
+
+  function loadImageFile(file) {
+    if (!file) return;
+    var looksImage = /^image\//.test(file.type) || /\.(heic|heif)$/i.test(file.name || "");
+    if (!looksImage) { setStatus("That doesn't look like an image."); return; }
+    setStatus("Loading photo…");
+    var fr = new FileReader();
+    fr.onerror = function () { setStatus("Couldn't read that file."); };
+    fr.onload = function () {
+      var img = new Image();
+      img.onload = function () { setPhotoFromImage(img); setStatus("Photo set."); };
+      img.onerror = function () {
+        setStatus("Couldn't decode that image — this browser may not support the format (HEIC?).");
+      };
+      img.src = fr.result;
+    };
+    fr.readAsDataURL(file);
+  }
+
+  /* path 1 — file input (native photo library / camera / files on mobile) */
+  var fileInput = document.getElementById("fileInput");
+  fileInput.addEventListener("change", function () {
+    loadImageFile(fileInput.files && fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  /* path 2 — drag & drop (drop zone highlights, but a drop anywhere works) */
+  var dropzone = document.getElementById("dropzone");
+  ["dragenter", "dragover"].forEach(function (ev) {
+    window.addEventListener(ev, function (e) {
+      e.preventDefault();
+      dropzone.classList.add("drag");
+    });
+  });
+  window.addEventListener("dragleave", function (e) {
+    if (!e.relatedTarget) dropzone.classList.remove("drag");
+  });
+  window.addEventListener("drop", function (e) {
+    e.preventDefault();
+    dropzone.classList.remove("drag");
+    var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    loadImageFile(f);
+  });
+
+  /* path 3 — clipboard paste event (reliable cross-browser path) */
+  document.addEventListener("paste", function (e) {
+    var items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (var pi = 0; pi < items.length; pi++) {
+      if (items[pi].type && items[pi].type.indexOf("image") === 0) {
+        loadImageFile(items[pi].getAsFile());
+        e.preventDefault();
+        return;
+      }
+    }
+  });
+
+  /* path 4 — async clipboard read button; feature-detected, hidden when absent */
+  var clipBtn = document.getElementById("clipBtn");
+  if (navigator.clipboard && navigator.clipboard.read && window.isSecureContext !== false) {
+    clipBtn.hidden = false;
+    clipBtn.addEventListener("click", async function () {
+      try {
+        var entries = await navigator.clipboard.read();
+        for (var ci = 0; ci < entries.length; ci++) {
+          var type = entries[ci].types.find(function (t) { return t.indexOf("image/") === 0; });
+          if (type) {
+            var blob = await entries[ci].getType(type);
+            loadImageFile(new File([blob], "clipboard." + type.split("/")[1], { type: type }));
+            return;
+          }
+        }
+        setStatus("No image on the clipboard.");
+      } catch (err) {
+        setStatus("Clipboard read was blocked — try Ctrl/Cmd+V instead.");
+      }
+    });
+  }
+
+  /* boot with the placeholder art through the same pipeline */
+  (function () {
+    var img = new Image();
+    img.onload = function () { setPhotoFromImage(img); };
+    img.src = "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+  })();
+
+  /* ------------------------------- serial / metadata ------------------------------- */
+  var now = new Date();
+  function pad(n) { return String(n).padStart(2, "0"); }
+  var serial = "HX-" + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) +
+               "-" + String(Math.floor(rand() * 9000) + 1000) + " · 042/500";
+  document.getElementById("serial").textContent = serial;
+  document.getElementById("mintDate").textContent =
+    now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate());
+  document.getElementById("mintTime").textContent =
+    pad(now.getHours()) + ":" + pad(now.getMinutes()) + " local";
+
+  /* ---------------------------------- tiers ----------------------------------
+     frame/chip carry both the CSS string and the raw stops the export
+     renderer rebuilds them from. */
+  var TIERS = {
+    common: { foil: 0,    sparkle: 0,    glare: 0.28, band: 110, tilt: 12,
+      frame: "linear-gradient(155deg,#454a57,#23262f 55%,#3a3f4c)",
+      frameStops: [[0, "#454a57"], [0.55, "#23262f"], [1, "#3a3f4c"]], frameConic: false,
+      glow: "rgba(80,90,110,0.25)",
+      chipBg: "linear-gradient(120deg,#8b93a5,#5d6473)", chipC: ["#8b93a5", "#5d6473"], chipFg: "#12141c", label: "Common" },
+    rare: { foil: 0.4,  sparkle: 0.3,  glare: 0.42, band: 110, tilt: 14,
+      frame: "linear-gradient(155deg,#cfe0f5,#5e7fb4 45%,#a9c2e6)",
+      frameStops: [[0, "#cfe0f5"], [0.45, "#5e7fb4"], [1, "#a9c2e6"]], frameConic: false,
+      glow: "rgba(110,150,220,0.3)",
+      chipBg: "linear-gradient(120deg,#cfe0f5,#7d9cc9)", chipC: ["#cfe0f5", "#7d9cc9"], chipFg: "#101a2c", label: "Rare" },
+    holo: { foil: 0.75, sparkle: 0.55, glare: 0.55, band: 110, tilt: 16,
+      frame: "linear-gradient(155deg,#f0cd7a,#a06be0 38%,#4fc3f7 72%,#f0cd7a)",
+      frameStops: [[0, "#f0cd7a"], [0.38, "#a06be0"], [0.72, "#4fc3f7"], [1, "#f0cd7a"]], frameConic: false,
+      glow: "rgba(150,110,255,0.35)",
+      chipBg: "linear-gradient(120deg,#f0cd7a,#b07ae8)", chipC: ["#f0cd7a", "#b07ae8"], chipFg: "#1c1030", label: "Holo" },
+    secret: { foil: 1.15, sparkle: 0.95, glare: 0.62, band: 110, tilt: 18,
+      frame: "conic-gradient(from calc(140deg + var(--px) * 240deg - var(--py) * 120deg),#ff5d5d,#ffc45d,#7dff8a,#5dc6ff,#b98aff,#ff5dcb,#ff5d5d)",
+      frameStops: [[0, "#ff5d5d"], [1 / 6, "#ffc45d"], [2 / 6, "#7dff8a"], [3 / 6, "#5dc6ff"],
+                   [4 / 6, "#b98aff"], [5 / 6, "#ff5dcb"], [1, "#ff5d5d"]], frameConic: true,
+      glow: "rgba(255,120,220,0.4)",
+      chipBg: "linear-gradient(120deg,#ff9ad5,#8a6bff)", chipC: ["#ff9ad5", "#8a6bff"], chipFg: "#fff", label: "Secret" }
+  };
+  var currentTier = "holo";
+
+  /* ---------------------------------- controls ---------------------------------- */
+  var sliders = {
+    foil:    { el: document.getElementById("s-foil"),    out: document.getElementById("o-foil"),    fmt: function (v) { return (+v).toFixed(2); } },
+    sparkle: { el: document.getElementById("s-sparkle"), out: document.getElementById("o-sparkle"), fmt: function (v) { return (+v).toFixed(2); } },
+    glare:   { el: document.getElementById("s-glare"),   out: document.getElementById("o-glare"),   fmt: function (v) { return (+v).toFixed(2); } },
+    band:    { el: document.getElementById("s-band"),    out: document.getElementById("o-band"),    fmt: function (v) { return v + "°"; } },
+    tilt:    { el: document.getElementById("s-tilt"),    out: document.getElementById("o-tilt"),    fmt: function (v) { return v + "°"; } }
+  };
+  function sliderVals() {
+    var v = {};
+    for (var k in sliders) v[k] = +sliders[k].el.value;
+    return v;
+  }
+
+  function applyVars() {
+    var v = sliderVals();
+    root.style.setProperty("--foil", v.foil);
+    root.style.setProperty("--sparkle", v.sparkle);
+    root.style.setProperty("--glare", v.glare);
+    root.style.setProperty("--band", v.band + "deg");
+    root.style.setProperty("--max-tilt", v.tilt + "deg");
+    for (var k2 in sliders) sliders[k2].out.textContent = sliders[k2].fmt(sliders[k2].el.value);
+    updateReadout(v);
+  }
+
+  var readout = document.getElementById("readout");
+  var copyBtn = document.getElementById("copyBtn");
+  function updateReadout(v) {
+    readout.childNodes.forEach(function (n) { if (n.nodeType === 3) readout.removeChild(n); });
+    readout.appendChild(document.createTextNode(
+      "--foil: "    + (+v.foil).toFixed(2) + ";\n" +
+      "--sparkle: " + (+v.sparkle).toFixed(2) + ";\n" +
+      "--glare: "   + (+v.glare).toFixed(2) + ";\n" +
+      "--band: "    + v.band + "deg;\n" +
+      "maxTilt: "   + v.tilt + "deg;\n" +
+      "tier: "      + currentTier + ";"
+    ));
+  }
+  copyBtn.addEventListener("click", function () {
+    var text = readout.textContent.replace(/^copy/, "").trim();
+    try {
+      navigator.clipboard.writeText(text).then(function () {
+        copyBtn.textContent = "copied";
+        setTimeout(function () { copyBtn.textContent = "copy"; }, 1200);
+      });
+    } catch (e) { /* clipboard unavailable on file:// — readout is selectable */ }
+  });
+
+  for (var key in sliders) sliders[key].el.addEventListener("input", applyVars);
+
+  var tierBtns = document.querySelectorAll("#tiers button");
+  function setTier(name) {
+    var t = TIERS[name];
+    if (!t) return;
+    currentTier = name;
+    scene.dataset.tier = name;
+    root.style.setProperty("--tier-frame", t.frame);
+    root.style.setProperty("--tier-glow", t.glow);
+    root.style.setProperty("--tier-chip-bg", t.chipBg);
+    root.style.setProperty("--tier-chip-fg", t.chipFg);
+    chip.textContent = t.label;
+    backTier.textContent = name;
+    sliders.foil.el.value = t.foil;
+    sliders.sparkle.el.value = t.sparkle;
+    sliders.glare.el.value = t.glare;
+    sliders.band.el.value = t.band;
+    sliders.tilt.el.value = t.tilt;
+    tierBtns.forEach(function (b) {
+      b.setAttribute("aria-pressed", b.dataset.tier === name ? "true" : "false");
+    });
+    applyVars();
+  }
+  tierBtns.forEach(function (b) {
+    b.addEventListener("click", function () { setTier(b.dataset.tier); });
+  });
+
+  /* ---------------------------------- pointer ---------------------------------- */
+  var dragging = false, moved = false, startX = 0, startY = 0, activeId = null;
+  var idleTimer = null;
+
+  function setPointerVars(clientX, clientY) {
+    var r = scene.getBoundingClientRect();
+    var px = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
+    var py = Math.min(1, Math.max(0, (clientY - r.top) / r.height));
+    root.style.setProperty("--px", px.toFixed(4));
+    root.style.setProperty("--py", py.toFixed(4));
+  }
+  function settle() {
+    scene.classList.remove("dragging");
+    root.style.setProperty("--px", 0.5);
+    root.style.setProperty("--py", 0.5);
+  }
+
+  scene.addEventListener("pointerdown", function (e) {
+    dragging = true; moved = false;
+    startX = e.clientX; startY = e.clientY;
+    activeId = e.pointerId;
+    scene.setPointerCapture(e.pointerId);
+    scene.classList.add("dragging");
+    setPointerVars(e.clientX, e.clientY);
+    stopIdle();
+  });
+
+  scene.addEventListener("pointermove", function (e) {
+    if (dragging && e.pointerId === activeId) {
+      if (Math.hypot(e.clientX - startX, e.clientY - startY) > 6) moved = true;
+      setPointerVars(e.clientX, e.clientY);
+    } else if (!dragging && e.pointerType === "mouse") {
+      scene.classList.add("dragging");   /* hover tracks 1:1, no easing lag */
+      setPointerVars(e.clientX, e.clientY);
+      stopIdle();
+    }
+  });
+
+  scene.addEventListener("pointerup", function (e) {
+    if (e.pointerId !== activeId) return;
+    dragging = false; activeId = null;
+    if (!moved) scene.classList.toggle("flipped");
+    settle();
+    armIdle();
+  });
+  scene.addEventListener("pointercancel", function () {
+    dragging = false; activeId = null;
+    settle(); armIdle();
+  });
+  scene.addEventListener("pointerleave", function () {
+    if (!dragging) { settle(); armIdle(); }
+  });
+
+  scene.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      scene.classList.toggle("flipped");
+    }
+  });
+  scene.tabIndex = 0;
+
+  /* --------------------------- idle shimmer (a slow orbit) --------------------------- */
+  var idleRaf = null;
+  function idleLoop(t) {
+    var px = 0.5 + Math.sin(t / 2400) * 0.22;
+    var py = 0.5 + Math.cos(t / 3100) * 0.16;
+    root.style.setProperty("--px", px.toFixed(4));
+    root.style.setProperty("--py", py.toFixed(4));
+    idleRaf = requestAnimationFrame(idleLoop);
+  }
+  function startIdle() {
+    if (reduceMotion.matches || idleRaf) return;
+    scene.classList.add("dragging");     /* direct-drive the vars */
+    idleRaf = requestAnimationFrame(idleLoop);
+  }
+  function stopIdle() {
+    clearTimeout(idleTimer);
+    if (idleRaf) {
+      cancelAnimationFrame(idleRaf);
+      idleRaf = null;
+    }
+  }
+  function armIdle() {
+    clearTimeout(idleTimer);
+    if (!reduceMotion.matches) idleTimer = setTimeout(startIdle, 3500);
+  }
+
+  /* ================================ EXPORT ================================
+     html2canvas / dom-to-image can't do mix-blend-mode, so the card is
+     re-rendered onto a raw canvas: photo → foil ('overlay') → sparkle
+     ('screen') → glare ('overlay') → plate/text, mirroring the CSS stack.
+     Design space is the CSS card (340×476); `s` scales it up.            */
+
+  var D = { W: 340, H: 476, PAD: 9, R: 20, IR: 13 };
+
+  function rrPath(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    if (ctx.roundRect) { ctx.roundRect(x, y, w, h, r); return; }
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  /* linear gradient matching CSS angle semantics (0deg = up, clockwise) */
+  function cssLinear(ctx, angleDeg, x, y, w, h) {
+    var a = (angleDeg - 90) * Math.PI / 180;
+    var dx = Math.cos(a), dy = Math.sin(a);
+    var L = (Math.abs(w * dx) + Math.abs(h * dy)) / 2;
+    var cx = x + w / 2, cy = y + h / 2;
+    return ctx.createLinearGradient(cx - dx * L, cy - dy * L, cx + dx * L, cy + dy * L);
+  }
+
+  /* one repeating-linear-gradient pass over an oversized rect, panned like
+     background-position does with background-size > 100% */
+  function foilPass(ctx, ix, iy, iw, ih, sizeMult, angleDeg, cycle, stops, px, py, invert) {
+    var gw = iw * sizeMult, gh = ih * sizeMult;
+    var ox = ix + (iw - gw) * (invert ? 1 - px : px);
+    var oy = iy + (ih - gh) * (invert ? 1 - py : py);
+    var g = cssLinear(ctx, angleDeg, ox, oy, gw, gh);
+    for (var k = 0; k * cycle < 1 + cycle; k++) {
+      for (var si = 0; si < stops.length; si++) {
+        var pos = k * cycle + stops[si][0] * cycle;
+        if (pos > 1) pos = 1;
+        g.addColorStop(pos, stops[si][1]);
+        if (pos === 1) { k = 1e9; break; }
+      }
+    }
+    ctx.fillStyle = g;
+    ctx.fillRect(ox, oy, gw, gh);
+  }
+
+  /* CSS mask falloff on the sparkle layer: stops 0→1, .4→.4, .75→.06, hold */
+  function maskAlpha(t) {
+    if (t <= 0) return 1;
+    if (t < 0.4) return 1 + (0.4 - 1) * (t / 0.4);
+    if (t < 0.75) return 0.4 + (0.06 - 0.4) * ((t - 0.4) / 0.35);
+    return 0.06;
+  }
+
+  var SPARK_FIELDS = [
+    { tile: 26, fx: 0.21, fy: 0.33, r: 0.7, halo: 0,   color: [255, 255, 255], a: 0.95, mx: -18, my: -12 },
+    { tile: 41, fx: 0.72, fy: 0.64, r: 0.9, halo: 0,   color: [255, 236, 204], a: 0.9,  mx: 26,  my: 20 },
+    { tile: 59, fx: 0.44, fy: 0.82, r: 1.1, halo: 0,   color: [205, 232, 255], a: 0.9,  mx: -44, my: 34 },
+    { tile: 83, fx: 0.81, fy: 0.17, r: 1.2, halo: 4.5, color: [255, 255, 255], a: 1,    mx: 62,  my: -52 }
+  ];
+
+  function renderCard(canvas, s, px, py) {
+    var v = sliderVals();
+    var tier = TIERS[currentTier];
+    canvas.width = D.W * s;
+    canvas.height = D.H * s;
+    var ctx = canvas.getContext("2d");
+    ctx.scale(s, s);
+
+    /* frame */
+    rrPath(ctx, 0, 0, D.W, D.H, D.R);
+    var fg;
+    if (tier.frameConic && ctx.createConicGradient) {
+      var fromDeg = 140 + px * 240 - py * 120;
+      fg = ctx.createConicGradient((fromDeg - 90) * Math.PI / 180, D.W / 2, D.H / 2);
+    } else {
+      fg = cssLinear(ctx, 155, 0, 0, D.W, D.H);
+    }
+    tier.frameStops.forEach(function (st) { fg.addColorStop(st[0], st[1]); });
+    ctx.fillStyle = fg;
+    ctx.fill();
+
+    /* inner clip */
+    var ix = D.PAD, iy = D.PAD, iw = D.W - 2 * D.PAD, ih = D.H - 2 * D.PAD;
+    ctx.save();
+    rrPath(ctx, ix, iy, iw, ih, D.IR);
+    ctx.clip();
+
+    /* 1 — photo (cover) */
+    ctx.fillStyle = "#0b0a14";
+    ctx.fillRect(ix, iy, iw, ih);
+    if (photoCanvas) {
+      var pw = photoCanvas.width, ph = photoCanvas.height;
+      var cs = Math.max(iw / pw, ih / ph);
+      var sw = iw / cs, sh = ih / cs;
+      ctx.drawImage(photoCanvas, (pw - sw) / 2, (ph - sh) / 2, sw, sh, ix, iy, iw, ih);
+    }
+
+    /* 2 — foil, blend 'overlay' (never color-dodge) */
+    if (v.foil > 0.01) {
+      var satMul = 0.7 + v.foil * 0.65;
+      function hs(h, sPct, l) { return "hsl(" + h + " " + Math.min(100, Math.round(sPct * satMul)) + "% " + l + "%)"; }
+      var rainbow = [
+        [0,     hs(2, 95, 61)], [1 / 6, hs(40, 100, 60)], [2 / 6, hs(85, 90, 56)],
+        [3 / 6, hs(175, 92, 55)], [4 / 6, hs(222, 100, 66)], [5 / 6, hs(285, 92, 64)],
+        [1,     hs(2, 95, 61)]
+      ];
+      ctx.globalCompositeOperation = "overlay";
+      ctx.globalAlpha = Math.min(0.92, v.foil * 0.82);
+      foilPass(ctx, ix, iy, iw, ih, 2.4, v.band, 0.33, rainbow, px, py, false);
+      var shimmer = [
+        [0, "rgba(255,255,255,0)"], [0.29, "rgba(255,255,255,0.35)"],
+        [0.49, "rgba(120,80,200,0.18)"], [0.71, "rgba(0,0,0,0.28)"], [1, "rgba(255,255,255,0)"]
+      ];
+      foilPass(ctx, ix, iy, iw, ih, 3.2, v.band + 63, 0.09, shimmer, px, py, true);
+      ctx.globalAlpha = 1;
+    }
+
+    /* 3 — sparkle, blend 'screen', masked toward the light.
+       Canvas can beat the CSS tiling here: each dot gets deterministic
+       jitter + size/alpha variation hashed from its lattice index, so the
+       export reads as scattered glitter with zero grid, and dots keep
+       their identity across video frames (they slide, not flicker). */
+    if (v.sparkle > 0.01) {
+      ctx.globalCompositeOperation = "screen";
+      var sparkOp = Math.min(1, v.sparkle * 1.15);
+      var lx = ix + iw * px, ly = iy + ih * py;
+      var Rx = iw * 0.95, Ry = ih * 0.75;
+      function hash2(a, b, seed) {
+        var x = Math.sin(a * 127.1 + b * 311.7 + seed * 74.7) * 43758.5453;
+        return x - Math.floor(x);
+      }
+      SPARK_FIELDS.forEach(function (f, fi) {
+        var offX = px * f.mx, offY = py * f.my;
+        var i0 = Math.floor((-f.tile - offX) / f.tile), i1 = Math.ceil((iw + f.tile - offX) / f.tile);
+        var j0 = Math.floor((-f.tile - offY) / f.tile), j1 = Math.ceil((ih + f.tile - offY) / f.tile);
+        var c = "rgba(" + f.color[0] + "," + f.color[1] + "," + f.color[2] + ",";
+        for (var ii = i0; ii <= i1; ii++) {
+          for (var jj = j0; jj <= j1; jj++) {
+            var jx = (hash2(ii, jj, fi * 3 + 1) - 0.5) * 0.9 * f.tile;
+            var jy = (hash2(ii, jj, fi * 3 + 2) - 0.5) * 0.9 * f.tile;
+            var vr = 0.55 + hash2(ii, jj, fi * 3 + 3) * 0.9;
+            var cx = ix + offX + (ii + f.fx) * f.tile + jx;
+            var cy = iy + offY + (jj + f.fy) * f.tile + jy;
+            var t = Math.sqrt(Math.pow((cx - lx) / Rx, 2) + Math.pow((cy - ly) / Ry, 2));
+            var al = maskAlpha(t) * sparkOp * (0.55 + vr * 0.45);
+            if (al < 0.03) continue;
+            var r = f.r * vr;
+            var halo = (f.halo ? f.halo : r * 2.4) * vr;
+            var hg = ctx.createRadialGradient(cx, cy, 0, cx, cy, halo);
+            hg.addColorStop(0, c + (f.a * al) + ")");
+            hg.addColorStop(Math.min(0.9, r / halo), c + (f.a * al * 0.85) + ")");
+            hg.addColorStop(1, c + "0)");
+            ctx.fillStyle = hg;
+            ctx.beginPath(); ctx.arc(cx, cy, halo, 0, 7); ctx.fill();
+          }
+        }
+      });
+    }
+
+    /* 4 — glare, blend 'overlay' */
+    if (v.glare > 0.01) {
+      ctx.globalCompositeOperation = "overlay";
+      ctx.globalAlpha = v.glare;
+      var glx = ix + iw * px, gly = iy + ih * py;
+      var far = Math.sqrt(Math.pow(Math.max(glx - ix, ix + iw - glx), 2) +
+                          Math.pow(Math.max(gly - iy, iy + ih - gly), 2));
+      var gg = ctx.createRadialGradient(glx, gly, 0, glx, gly, far);
+      gg.addColorStop(0, "rgba(255,255,255,0.85)");
+      gg.addColorStop(0.22, "rgba(255,255,255,0.28)");
+      gg.addColorStop(0.58, "rgba(60,50,90,0.22)");
+      gg.addColorStop(1, "rgba(0,0,0,0.35)");
+      ctx.fillStyle = gg;
+      ctx.fillRect(ix, iy, iw, ih);
+      ctx.globalAlpha = 1;
+    }
+
+    /* 5 — plate + text furniture, normal blending */
+    ctx.globalCompositeOperation = "source-over";
+    var plateH = 92, pTop = iy + ih - plateH;
+    var pg = ctx.createLinearGradient(0, pTop, 0, iy + ih);
+    pg.addColorStop(0, "rgba(8,6,18,0)");
+    pg.addColorStop(0.46, "rgba(8,6,18,0.72)");
+    pg.addColorStop(1, "rgba(8,6,18,0.92)");
+    ctx.fillStyle = pg;
+    ctx.fillRect(ix, pTop, iw, plateH);
+
+    var name = document.getElementById("cardName").textContent;
+    var sub = document.getElementById("cardSub").textContent.toUpperCase();
+    var tx = ix + 14, bottom = iy + ih;
+    try { ctx.letterSpacing = "2.3px"; } catch (e) {}
+    ctx.fillStyle = "#9a96ad";
+    ctx.font = "400 10.5px ui-sans-serif, system-ui, sans-serif";
+    ctx.fillText(sub, tx, bottom - 14);
+    try { ctx.letterSpacing = "1.4px"; } catch (e) {}
+    ctx.fillStyle = "#e8e6f0";
+    ctx.font = "700 18px ui-sans-serif, system-ui, sans-serif";
+    ctx.fillText(name, tx, bottom - 30);
+    try { ctx.letterSpacing = "0px"; } catch (e) {}
+
+    /* chip */
+    try { ctx.letterSpacing = "1.4px"; } catch (e) {}
+    ctx.font = "800 10px ui-sans-serif, system-ui, sans-serif";
+    var chipText = tier.label.toUpperCase();
+    var chW = ctx.measureText(chipText).width + 18, chH = 21;
+    var chX = ix + iw - 14 - chW, chY = bottom - 12 - chH;
+    rrPath(ctx, chX, chY, chW, chH, chH / 2);
+    var cg = cssLinear(ctx, 120, chX, chY, chW, chH);
+    cg.addColorStop(0, tier.chipC[0]);
+    cg.addColorStop(1, tier.chipC[1]);
+    ctx.fillStyle = cg;
+    ctx.fill();
+    ctx.fillStyle = tier.chipFg;
+    ctx.fillText(chipText, chX + 9, chY + 14.5);
+    try { ctx.letterSpacing = "0px"; } catch (e) {}
+
+    /* watermark — every export carries it */
+    ctx.save();
+    ctx.font = "600 11px ui-sans-serif, system-ui, sans-serif";
+    ctx.shadowColor = "rgba(0,0,0,0.45)";
+    ctx.shadowBlur = 5;
+    ctx.fillStyle = "rgba(255,255,255,0.55)";
+    ctx.textAlign = "right";
+    ctx.fillText("pull", ix + iw - 11, iy + 20);
+    ctx.restore();
+
+    /* glass lip */
+    rrPath(ctx, ix + 0.5, iy + 0.5, iw - 1, ih - 1, D.IR);
+    ctx.strokeStyle = "rgba(255,255,255,0.09)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    ctx.restore();  /* un-clip */
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    return canvas;
+  }
+
+  var exportCanvas = document.createElement("canvas");
+  var EXPORT_POSE = { px: 0.63, py: 0.32 };   /* a flattering fixed light angle */
+
+  function blobToDataURL(blob) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(fr.result); };
+      fr.onerror = reject;
+      fr.readAsDataURL(blob);
+    });
+  }
+
+  /* share where possible, else a data-URL download link (no blob: URLs) */
+  async function deliver(blob, filename) {
+    var file = new File([blob], filename, { type: blob.type });
+    if (navigator.canShare && navigator.share && navigator.canShare({ files: [file] })) {
+      try {
+        await navigator.share({ files: [file], title: "pull card" });
+        setStatus("Shared.");
+        return;
+      } catch (err) {
+        if (err && err.name === "AbortError") { setStatus("Share canceled."); return; }
+        /* fall through to download */
+      }
+    }
+    var url = await blobToDataURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setStatus("Saved " + filename);
+  }
+
+  var pngBtn = document.getElementById("pngBtn");
+  var vidBtn = document.getElementById("vidBtn");
+  var preview = document.getElementById("exportPreview");
+
+  pngBtn.addEventListener("click", async function () {
+    pngBtn.disabled = true;
+    setStatus("Rendering…");
+    try {
+      renderCard(exportCanvas, 3, EXPORT_POSE.px, EXPORT_POSE.py);
+      var blob = await new Promise(function (res) { exportCanvas.toBlob(res, "image/png"); });
+      preview.src = await blobToDataURL(blob);
+      preview.classList.add("show");
+      await deliver(blob, "pull-card.png");
+    } catch (err) {
+      setStatus("Export failed: " + err.message);
+    }
+    pngBtn.disabled = false;
+  });
+
+  /* ------------------------------ video export ------------------------------
+     3.5s scripted light sweep, card re-rendered per frame and drawn with a
+     strip-based fake-perspective tilt, recorded off the canvas stream. */
+  var VIDEO_OK = !!(window.MediaRecorder &&
+    HTMLCanvasElement.prototype.captureStream &&
+    (MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ||
+     MediaRecorder.isTypeSupported("video/webm;codecs=vp8") ||
+     MediaRecorder.isTypeSupported("video/webm")));
+  if (!VIDEO_OK) vidBtn.hidden = true;
+
+  function recordVideo(forceMime) {
+    return new Promise(function (resolve, reject) {
+      var vw = 720, vh = 960;
+      var vcan = document.createElement("canvas");
+      vcan.width = vw; vcan.height = vh;
+      var vctx = vcan.getContext("2d");
+      var cardCan = document.createElement("canvas");
+
+      var mime = (forceMime && MediaRecorder.isTypeSupported(forceMime)) ? forceMime :
+        ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"]
+          .find(function (m) { return MediaRecorder.isTypeSupported(m); });
+      var stream = vcan.captureStream(30);
+      var rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
+      var chunks = [];
+      rec.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
+      rec.onstop = function () { resolve(new Blob(chunks, { type: mime })); };
+      rec.onerror = function (e) { reject(e.error || new Error("recorder failed")); };
+
+      var DUR = 3500, t0 = performance.now();
+      var ch = vh * 0.82, cw = ch * (D.W / D.H);
+      var ccx = vw / 2, ccy = vh / 2;
+
+      function frame(nowT) {
+        var t = Math.min(1, (nowT - t0) / DUR);
+        var px = 0.5 + 0.46 * Math.sin(t * Math.PI * 2);
+        var py = 0.5 - 0.15 * Math.sin(t * Math.PI * 4);
+        renderCard(cardCan, 1.6, px, py);
+
+        var bg = vctx.createRadialGradient(ccx, vh * 0.3, 60, ccx, vh * 0.45, vh * 0.75);
+        bg.addColorStop(0, "#191627");
+        bg.addColorStop(1, "#060510");
+        vctx.globalAlpha = 1;
+        vctx.fillStyle = bg;
+        vctx.fillRect(0, 0, vw, vh);
+
+        /* soft shadow under the card */
+        vctx.save();
+        vctx.filter = "blur(18px)";
+        vctx.fillStyle = "rgba(0,0,0,0.55)";
+        vctx.beginPath();
+        vctx.ellipse(ccx, ccy + ch / 2 + 16, cw * 0.42, 18, 0, 0, 7);
+        vctx.fill();
+        vctx.restore();
+
+        /* strip-based fake perspective for the tilt */
+        var tilt = (px - 0.5) * 2 * 0.16;
+        var N = 48, sw = cardCan.width / N, dw = cw / N;
+        for (var si = 0; si < N; si++) {
+          var f = si / (N - 1) - 0.5;
+          var hh = ch * (1 + tilt * f);
+          vctx.drawImage(cardCan, si * sw, 0, sw, cardCan.height,
+            ccx - cw / 2 + si * dw, ccy - hh / 2 + (py - 0.5) * 14 * f, dw + 0.75, hh);
+        }
+
+        if (t < 1) requestAnimationFrame(frame);
+        else setTimeout(function () { rec.stop(); }, 120);
+      }
+      rec.start(200);
+      requestAnimationFrame(frame);
+    });
+  }
+
+  vidBtn.addEventListener("click", async function () {
+    vidBtn.disabled = true;
+    setStatus("Recording 3.5s sweep…");
+    try {
+      var blob = await recordVideo();
+      setStatus("Video ready (" + (blob.size / 1024 / 1024).toFixed(1) + " MB)");
+      await deliver(blob, "pull-card.webm");
+    } catch (err) {
+      setStatus("Video export failed: " + err.message);
+    }
+    vidBtn.disabled = false;
+  });
+
+  /* ----------------- debug states via location.hash (screenshot rig) ----------------- */
+  var params = new URLSearchParams(location.hash.slice(1));
+  if (params.has("px")) {
+    stopIdle();
+    scene.classList.add("dragging");
+    root.style.setProperty("--px", params.get("px"));
+    root.style.setProperty("--py", params.get("py") || "0.5");
+    if (params.has("tier")) setTier(params.get("tier"));
+    if (params.get("flip") === "1") scene.classList.add("flipped");
+  } else {
+    armIdle();
+  }
+
+  /* headless test hooks (no-ops for normal use) */
+  window.__pull = {
+    setTier: setTier,
+    png: function (px, py) {
+      renderCard(exportCanvas, 3, px == null ? EXPORT_POSE.px : px, py == null ? EXPORT_POSE.py : py);
+      return exportCanvas.toDataURL("image/png");
+    },
+    video: function (wantData, forceMime) {
+      return recordVideo(forceMime).then(function (b) {
+        if (!wantData) return { size: b.size, type: b.type };
+        return blobToDataURL(b).then(function (u) { return { size: b.size, type: b.type, data: u }; });
+      });
+    },
+    ready: function () { return !!photoCanvas; }
+  };
+
+  applyVars();
+})();
+</script>
+</body>
+</html>
