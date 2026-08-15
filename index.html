@@ -2,8 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>HOLO/CARD — tuning bench</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#050508">
+<meta name="description" content="pull — turn any photo into a holographic trading card. Tilt it, flip it, export it.">
+<title>pull — holographic card press</title>
 <style>
   /* ---------- registered custom properties so pointer vars can transition ---------- */
   @property --px { syntax: "<number>"; inherits: true; initial-value: 0.5; }
@@ -21,45 +23,113 @@
     --tier-chip-bg: linear-gradient(120deg, #f0cd7a, #b07ae8);
     --tier-chip-fg: #1c1030;
 
-    --ink: #e8e6f0;
-    --ink-dim: #9a96ad;
-    --panel-bg: rgba(20, 20, 32, 0.85);
-    --panel-line: rgba(255, 255, 255, 0.08);
+    --bg: #050508;
+    --ink: #ececf2;
+    --ink-dim: #8f8ca6;
+    --hair: rgba(255, 255, 255, 0.09);
+    --hair-strong: rgba(255, 255, 255, 0.26);
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
-  html { height: 100%; background: #060510; }
+  html { height: 100%; background: var(--bg); }
   body {
-    min-height: 100%;
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100dvh;
+    font-family: var(--mono);
     color: var(--ink);
-    background:
-      radial-gradient(120% 90% at 50% 0%, #191627 0%, #0d0b16 55%, #060510 100%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 32px 20px;
-  }
-
-  .stage {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 48px;
-    align-items: center;
-    justify-content: center;
-    max-width: 980px;
-    width: 100%;
-  }
-
-  /* =============================== CARD =============================== */
-
-  .card-zone {
+    background: var(--bg);
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 18px;
+    padding: 14px clamp(20px, 6vw, 40px) calc(26px + env(safe-area-inset-bottom));
+    overflow-x: clip;
   }
+
+  /* film grain over everything — cards are physical objects */
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 90;
+    pointer-events: none;
+    opacity: 0.05;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* =============================== chrome =============================== */
+
+  .top {
+    width: 100%;
+    max-width: 460px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding-bottom: 12px;
+    margin-bottom: clamp(18px, 4.5vh, 40px);
+    border-bottom: 1px solid var(--hair);
+  }
+  .wordmark {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 17px;
+    letter-spacing: -0.02em;
+  }
+  .tag {
+    font-size: 9px;
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+  }
+
+  main {
+    width: 100%;
+    max-width: 460px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ===================== the press sheet (card + marks) ===================== */
+
+  .press {
+    position: relative;
+    padding: 16px 18px;
+    margin-bottom: 14px;
+  }
+  .press.drag .scene { outline: 1px dashed var(--hair-strong); outline-offset: 8px; }
+
+  /* registration corner marks */
+  .press .m {
+    position: absolute;
+    width: 13px;
+    height: 13px;
+    border: 0 solid var(--hair-strong);
+  }
+  .press .m1 { top: 0; left: 0; border-top-width: 1px; border-left-width: 1px; }
+  .press .m2 { top: 0; right: 0; border-top-width: 1px; border-right-width: 1px; }
+  .press .m3 { bottom: 0; left: 0; border-bottom-width: 1px; border-left-width: 1px; }
+  .press .m4 { bottom: 0; right: 0; border-bottom-width: 1px; border-right-width: 1px; }
+
+  /* vertical proof annotations */
+  .ann {
+    position: absolute;
+    top: 16px;
+    bottom: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    writing-mode: vertical-rl;
+    font-size: 8.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    white-space: nowrap;
+    pointer-events: none;
+  }
+  .ann-l { left: -3px; transform: rotate(180deg); }
+  .ann-r { right: -3px; }
 
   .scene {
     perspective: 1100px;
@@ -74,7 +144,7 @@
   .scene.dragging { transition: none; cursor: grabbing; }
 
   .tilt {
-    width: min(340px, 78vw);
+    width: min(76vw, 340px);
     aspect-ratio: 5 / 7;
     transform-style: preserve-3d;
     transform: rotateX(calc((0.5 - var(--py)) * 2 * var(--max-tilt)))
@@ -211,6 +281,7 @@
     align-items: flex-end;
     justify-content: space-between;
     gap: 10px;
+    font-family: var(--sans);
   }
   .plate .name {
     font-size: 18px;
@@ -273,7 +344,8 @@
   }
   .back .brand {
     margin-top: 10px;
-    font-size: 12px;
+    font-family: var(--sans);
+    font-size: 13px;
     font-weight: 800;
     letter-spacing: 0.42em;
     text-indent: 0.42em;
@@ -294,10 +366,9 @@
     border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
   .back .meta dt { color: var(--ink-dim); text-transform: uppercase; letter-spacing: 0.18em; font-size: 9px; padding-top: 1px; }
-  .back .meta dd { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: var(--ink); text-align: right; }
+  .back .meta dd { color: var(--ink); text-align: right; }
   .back .serial {
     margin-top: 26px;
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     font-size: 13px;
     letter-spacing: 0.18em;
     color: #cfc8ea;
@@ -312,132 +383,132 @@
     opacity: 0.8;
   }
 
-  .hint {
-    font-size: 11px;
-    letter-spacing: 0.28em;
+  /* ============================ telemetry + controls ============================ */
+
+  .telemetry {
+    display: flex;
+    gap: 14px;
+    font-size: 9px;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--ink-dim);
+    margin-bottom: clamp(16px, 3.5vh, 30px);
   }
+  .telemetry b { color: var(--ink); font-weight: 400; }
 
-  /* =============================== PANEL =============================== */
-
-  .panel {
-    width: 300px;
-    background: var(--panel-bg);
-    border: 1px solid var(--panel-line);
-    border-radius: 16px;
-    padding: 20px 20px 16px;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 24px 60px -24px rgba(0, 0, 0, 0.8);
-  }
-  .panel h1 {
-    font-size: 11px;
-    font-weight: 700;
-    letter-spacing: 0.3em;
-    text-transform: uppercase;
-    color: var(--ink-dim);
-    margin-bottom: 16px;
-  }
-  .panel h1 b { color: var(--ink); }
-
-  /* ------- photo input ------- */
-  .dropzone {
-    display: block;
-    position: relative;
-    border: 1.5px dashed rgba(160, 122, 232, 0.45);
-    border-radius: 12px;
-    background: rgba(160, 122, 232, 0.07);
-    padding: 20px 14px 18px;
-    text-align: center;
-    cursor: pointer;
-    transition: border-color 0.15s, background 0.15s;
-    margin-bottom: 10px;
-  }
-  .dropzone:hover, .dropzone.drag {
-    border-color: #a07ae8;
-    background: rgba(160, 122, 232, 0.16);
-  }
-  .dropzone input {
-    position: absolute;
-    width: 1px; height: 1px;
-    opacity: 0;
-    overflow: hidden;
-    clip: rect(0 0 0 0);
-  }
-  .dropzone .dz-big {
-    font-size: 13px;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-  }
-  .dropzone .dz-small {
-    margin-top: 4px;
-    font-size: 9.5px;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--ink-dim);
-  }
-
-  .ghost {
-    display: block;
+  .bar {
     width: 100%;
-    font: inherit;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    padding: 8px 0;
-    border-radius: 8px;
-    border: 1px solid var(--panel-line);
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--ink-dim);
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-    margin-bottom: 16px;
+    max-width: 380px;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
   }
-  .ghost:hover { background: rgba(255, 255, 255, 0.09); color: var(--ink); }
+  .btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--hair);
+    border-radius: 10px;
+    padding: 15px 10px 14px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .btn:hover { background: rgba(255, 255, 255, 0.07); }
+  .btn:disabled { opacity: 0.45; cursor: default; }
+  .btn[hidden] { display: none; }
+  .btn input { position: absolute; width: 1px; height: 1px; opacity: 0; clip: rect(0 0 0 0); }
+
+  .btn.primary {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(#0d0c15, #0d0c15) padding-box,
+      linear-gradient(120deg, #f0cd7a, #a06be0 40%, #4fc3f7 75%, #f0cd7a) border-box;
+  }
+  .btn.primary:hover { background:
+      linear-gradient(#16141f, #16141f) padding-box,
+      linear-gradient(120deg, #f0cd7a, #a06be0 40%, #4fc3f7 75%, #f0cd7a) border-box; }
+
+  .row {
+    width: 100%;
+    max-width: 380px;
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .row .btn { padding: 11px 8px 10px; font-size: 10px; }
 
   .tiers {
+    width: 100%;
+    max-width: 380px;
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 6px;
+    gap: 8px;
     margin-bottom: 18px;
   }
   .tiers button {
-    font: inherit;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
+    font-family: var(--mono);
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
-    padding: 8px 0 7px;
+    padding: 9px 0 8px;
     border-radius: 8px;
-    border: 1px solid var(--panel-line);
-    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--hair);
+    background: transparent;
     color: var(--ink-dim);
     cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
   }
-  .tiers button:hover { background: rgba(255, 255, 255, 0.09); color: var(--ink); }
+  .tiers button:hover { color: var(--ink); }
   .tiers button[aria-pressed="true"] {
-    background: rgba(160, 120, 255, 0.18);
-    border-color: rgba(160, 120, 255, 0.55);
-    color: #e6dcff;
+    color: var(--ink);
+    border-color: var(--hair-strong);
+    background: rgba(255, 255, 255, 0.05);
   }
 
-  .ctl { margin-bottom: 13px; }
+  /* tuning bench, folded away */
+  .tune {
+    width: 100%;
+    max-width: 380px;
+    border-top: 1px solid var(--hair);
+    border-bottom: 1px solid var(--hair);
+    margin-bottom: 18px;
+  }
+  .tune summary {
+    list-style: none;
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 2px;
+    font-size: 9.5px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--ink-dim);
+    cursor: pointer;
+  }
+  .tune summary::-webkit-details-marker { display: none; }
+  .tune summary::after { content: "+"; color: var(--ink-dim); }
+  .tune[open] summary::after { content: "–"; }
+  .tune .tune-body { padding: 4px 2px 16px; }
+
+  .ctl { margin-bottom: 12px; }
   .ctl label {
     display: flex;
     justify-content: space-between;
-    font-size: 10.5px;
-    letter-spacing: 0.12em;
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
     text-transform: uppercase;
     color: var(--ink-dim);
     margin-bottom: 5px;
   }
-  .ctl output {
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    color: var(--ink);
-    letter-spacing: 0;
-  }
+  .ctl output { color: var(--ink); }
   .ctl input[type="range"] {
     width: 100%;
     accent-color: #a07ae8;
@@ -445,74 +516,58 @@
   }
 
   .readout {
-    margin-top: 6px;
     position: relative;
-    background: rgba(0, 0, 0, 0.45);
-    border: 1px solid var(--panel-line);
-    border-radius: 10px;
-    padding: 12px 14px;
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    font-size: 11.5px;
-    line-height: 1.75;
-    color: #b9e3c6;
+    margin-top: 4px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid var(--hair);
+    border-radius: 8px;
+    padding: 11px 12px;
+    font-size: 10.5px;
+    line-height: 1.8;
+    color: #a9d8b8;
     white-space: pre;
     overflow-x: auto;
   }
   .readout .copy {
     position: absolute;
-    top: 8px;
-    right: 8px;
-    font: inherit;
-    font-size: 9.5px;
+    top: 7px;
+    right: 7px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.08em;
     padding: 3px 8px;
     border-radius: 6px;
-    border: 1px solid var(--panel-line);
-    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--hair);
+    background: transparent;
     color: var(--ink-dim);
     cursor: pointer;
   }
-  .readout .copy:hover { color: var(--ink); background: rgba(255, 255, 255, 0.12); }
+  .readout .copy:hover { color: var(--ink); }
 
-  /* ------- export ------- */
-  .actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 6px;
-    margin-top: 14px;
-  }
-  .actions button {
-    font: inherit;
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    padding: 10px 0 9px;
-    border-radius: 8px;
-    border: 1px solid rgba(160, 120, 255, 0.4);
-    background: rgba(160, 120, 255, 0.14);
-    color: #e6dcff;
-    cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
-  }
-  .actions button:hover { background: rgba(160, 120, 255, 0.26); border-color: rgba(160, 120, 255, 0.7); }
-  .actions button:disabled { opacity: 0.45; cursor: default; }
-  .actions button[hidden] { display: none; }
-
-  .status {
-    min-height: 15px;
-    margin-top: 8px;
-    font-size: 10px;
-    letter-spacing: 0.05em;
-    color: var(--ink-dim);
-  }
   .exportPreview {
     display: none;
     width: 100%;
-    margin-top: 10px;
-    border-radius: 10px;
-    border: 1px solid var(--panel-line);
+    margin-top: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--hair);
   }
   .exportPreview.show { display: block; }
+
+  .status {
+    min-height: 15px;
+    font-size: 9.5px;
+    letter-spacing: 0.1em;
+    color: var(--ink-dim);
+    margin-bottom: 6px;
+    text-align: center;
+  }
+  .hint {
+    font-size: 9px;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: rgba(143, 140, 166, 0.65);
+    text-align: center;
+  }
 
   /* =========================== reduced motion =========================== */
   @media (prefers-reduced-motion: reduce) {
@@ -520,17 +575,25 @@
     .flipper { transition: transform 0.001s; }
   }
 
-  @media (max-width: 760px) {
-    body { padding: 24px 14px; }
-    .stage { gap: 30px; }
-    .panel { width: min(340px, 92vw); }
+  @media (min-width: 700px) {
+    .top, main { max-width: 520px; }
+    .tilt { width: 380px; }
   }
 </style>
 </head>
 <body>
-<main class="stage">
 
-  <section class="card-zone">
+<header class="top">
+  <span class="wordmark">pull</span>
+  <span class="tag">holo card press &middot; proof/01</span>
+</header>
+
+<main>
+  <div class="press" id="press">
+    <span class="m m1"></span><span class="m m2"></span><span class="m m3"></span><span class="m m4"></span>
+    <div class="ann ann-l">pull &middot; foil proof &middot; do not trim</div>
+    <div class="ann ann-r" id="annSerial">HX-00000000-0000</div>
+
     <div class="scene" id="scene" data-tier="holo">
       <div class="tilt" id="tilt">
         <div class="flipper" id="flipper">
@@ -556,11 +619,11 @@
               <div class="layer backfoil"></div>
               <div class="layer backglare"></div>
               <div class="mark">&#9670;</div>
-              <div class="brand">HOLO/CARD</div>
+              <div class="brand">PULL</div>
               <dl class="meta">
                 <div><dt>Minted</dt><dd id="mintDate">—</dd></div>
                 <div><dt>Time</dt><dd id="mintTime">—</dd></div>
-                <div><dt>Source</dt><dd>index.html &middot; local</dd></div>
+                <div><dt>Source</dt><dd>pull &middot; card press</dd></div>
                 <div><dt>Tier</dt><dd id="backTier">holo</dd></div>
               </dl>
               <div class="serial" id="serial">—</div>
@@ -571,57 +634,62 @@
         </div>
       </div>
     </div>
-    <p class="hint">drag to tilt &middot; click to flip</p>
-  </section>
+  </div>
 
-  <aside class="panel">
-    <h1><b>HOLO/CARD</b> &middot; tuning bench</h1>
+  <div class="telemetry">
+    <span>L <b id="telL">0.50/0.50</b></span>
+    <span>TIER <b id="telT">HOLO</b></span>
+    <span>ED <b>042/500</b></span>
+  </div>
 
-    <label class="dropzone" id="dropzone">
-      <input id="fileInput" type="file" accept="image/*,.heic,.heif">
-      <div class="dz-big">Add your photo</div>
-      <div class="dz-small">tap to choose &middot; drag &amp; drop &middot; paste</div>
-    </label>
-    <button class="ghost" id="clipBtn" hidden>Paste from clipboard</button>
+  <div class="bar">
+    <label class="btn primary">Add photo<input id="fileInput" type="file" accept="image/*,.heic,.heif"></label>
+    <button class="btn" id="tiltBtn" hidden>Enable tilt</button>
+  </div>
 
-    <div class="tiers" id="tiers">
-      <button data-tier="common">Common</button>
-      <button data-tier="rare">Rare</button>
-      <button data-tier="holo" aria-pressed="true">Holo</button>
-      <button data-tier="secret">Secret</button>
-    </div>
+  <div class="row">
+    <button class="btn" id="pngBtn">PNG</button>
+    <button class="btn" id="vidBtn">Clip</button>
+    <button class="btn" id="clipBtn" hidden>Paste</button>
+  </div>
 
-    <div class="ctl">
-      <label for="s-foil">Foil <output id="o-foil">0.75</output></label>
-      <input id="s-foil" type="range" min="0" max="1.5" step="0.01" value="0.75">
-    </div>
-    <div class="ctl">
-      <label for="s-sparkle">Sparkle <output id="o-sparkle">0.55</output></label>
-      <input id="s-sparkle" type="range" min="0" max="1.5" step="0.01" value="0.55">
-    </div>
-    <div class="ctl">
-      <label for="s-glare">Glare <output id="o-glare">0.55</output></label>
-      <input id="s-glare" type="range" min="0" max="1" step="0.01" value="0.55">
-    </div>
-    <div class="ctl">
-      <label for="s-band">Band angle <output id="o-band">110&deg;</output></label>
-      <input id="s-band" type="range" min="0" max="180" step="1" value="110">
-    </div>
-    <div class="ctl">
-      <label for="s-tilt">Max tilt <output id="o-tilt">16&deg;</output></label>
-      <input id="s-tilt" type="range" min="0" max="30" step="1" value="16">
-    </div>
+  <div class="tiers" id="tiers">
+    <button data-tier="common">Common</button>
+    <button data-tier="rare">Rare</button>
+    <button data-tier="holo" aria-pressed="true">Holo</button>
+    <button data-tier="secret">Secret</button>
+  </div>
 
-    <div class="readout" id="readout"><button class="copy" id="copyBtn">copy</button></div>
-
-    <div class="actions">
-      <button id="pngBtn">Export PNG</button>
-      <button id="vidBtn">Export video</button>
+  <details class="tune">
+    <summary>tuning bench</summary>
+    <div class="tune-body">
+      <div class="ctl">
+        <label for="s-foil">Foil <output id="o-foil">0.75</output></label>
+        <input id="s-foil" type="range" min="0" max="1.5" step="0.01" value="0.75">
+      </div>
+      <div class="ctl">
+        <label for="s-sparkle">Sparkle <output id="o-sparkle">0.55</output></label>
+        <input id="s-sparkle" type="range" min="0" max="1.5" step="0.01" value="0.55">
+      </div>
+      <div class="ctl">
+        <label for="s-glare">Glare <output id="o-glare">0.55</output></label>
+        <input id="s-glare" type="range" min="0" max="1" step="0.01" value="0.55">
+      </div>
+      <div class="ctl">
+        <label for="s-band">Band angle <output id="o-band">110&deg;</output></label>
+        <input id="s-band" type="range" min="0" max="180" step="1" value="110">
+      </div>
+      <div class="ctl">
+        <label for="s-tilt">Max tilt <output id="o-tilt">16&deg;</output></label>
+        <input id="s-tilt" type="range" min="0" max="30" step="1" value="16">
+      </div>
+      <div class="readout" id="readout"><button class="copy" id="copyBtn">copy</button></div>
+      <img class="exportPreview" id="exportPreview" alt="Last export preview">
     </div>
-    <div class="status" id="status"></div>
-    <img class="exportPreview" id="exportPreview" alt="Last export preview">
-  </aside>
+  </details>
 
+  <p class="status" id="status"></p>
+  <p class="hint">drag to tilt &middot; tap to flip &middot; drop a photo</p>
 </main>
 
 <script>
@@ -630,12 +698,23 @@
 
   var root = document.documentElement;
   var scene = document.getElementById("scene");
+  var press = document.getElementById("press");
   var chip = document.getElementById("chip");
   var backTier = document.getElementById("backTier");
   var statusEl = document.getElementById("status");
+  var telL = document.getElementById("telL");
+  var telT = document.getElementById("telT");
   var reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
   function setStatus(msg) { statusEl.textContent = msg || ""; }
+
+  var curPx = 0.5, curPy = 0.5;
+  function setVars(px, py) {
+    curPx = px; curPy = py;
+    root.style.setProperty("--px", px.toFixed(4));
+    root.style.setProperty("--py", py.toFixed(4));
+    telL.textContent = px.toFixed(2) + "/" + py.toFixed(2);
+  }
 
   /* ------------------------- placeholder artwork (inline SVG) ------------------------- */
   function mulberry32(a) {
@@ -750,20 +829,19 @@
     fileInput.value = "";
   });
 
-  /* path 2 — drag & drop (drop zone highlights, but a drop anywhere works) */
-  var dropzone = document.getElementById("dropzone");
+  /* path 2 — drag & drop anywhere on the page; the press sheet highlights */
   ["dragenter", "dragover"].forEach(function (ev) {
     window.addEventListener(ev, function (e) {
       e.preventDefault();
-      dropzone.classList.add("drag");
+      press.classList.add("drag");
     });
   });
   window.addEventListener("dragleave", function (e) {
-    if (!e.relatedTarget) dropzone.classList.remove("drag");
+    if (!e.relatedTarget) press.classList.remove("drag");
   });
   window.addEventListener("drop", function (e) {
     e.preventDefault();
-    dropzone.classList.remove("drag");
+    press.classList.remove("drag");
     var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     loadImageFile(f);
   });
@@ -813,9 +891,10 @@
   /* ------------------------------- serial / metadata ------------------------------- */
   var now = new Date();
   function pad(n) { return String(n).padStart(2, "0"); }
-  var serial = "HX-" + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) +
-               "-" + String(Math.floor(rand() * 9000) + 1000) + " · 042/500";
-  document.getElementById("serial").textContent = serial;
+  var serialCore = "HX-" + now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) +
+               "-" + String(Math.floor(rand() * 9000) + 1000);
+  document.getElementById("serial").textContent = serialCore + " · 042/500";
+  document.getElementById("annSerial").textContent = serialCore;
   document.getElementById("mintDate").textContent =
     now.getFullYear() + "-" + pad(now.getMonth() + 1) + "-" + pad(now.getDate());
   document.getElementById("mintTime").textContent =
@@ -894,7 +973,7 @@
         copyBtn.textContent = "copied";
         setTimeout(function () { copyBtn.textContent = "copy"; }, 1200);
       });
-    } catch (e) { /* clipboard unavailable on file:// — readout is selectable */ }
+    } catch (e) { /* clipboard unavailable — readout is selectable */ }
   });
 
   for (var key in sliders) sliders[key].el.addEventListener("input", applyVars);
@@ -911,6 +990,7 @@
     root.style.setProperty("--tier-chip-fg", t.chipFg);
     chip.textContent = t.label;
     backTier.textContent = name;
+    telT.textContent = name.toUpperCase();
     sliders.foil.el.value = t.foil;
     sliders.sparkle.el.value = t.sparkle;
     sliders.glare.el.value = t.glare;
@@ -927,23 +1007,23 @@
 
   /* ---------------------------------- pointer ---------------------------------- */
   var dragging = false, moved = false, startX = 0, startY = 0, activeId = null;
+  var touchActive = false;
   var idleTimer = null;
 
   function setPointerVars(clientX, clientY) {
     var r = scene.getBoundingClientRect();
     var px = Math.min(1, Math.max(0, (clientX - r.left) / r.width));
     var py = Math.min(1, Math.max(0, (clientY - r.top) / r.height));
-    root.style.setProperty("--px", px.toFixed(4));
-    root.style.setProperty("--py", py.toFixed(4));
+    setVars(px, py);
   }
   function settle() {
     scene.classList.remove("dragging");
-    root.style.setProperty("--px", 0.5);
-    root.style.setProperty("--py", 0.5);
+    if (!gyroActive) setVars(0.5, 0.5);
+    else scene.classList.add("dragging");
   }
 
   scene.addEventListener("pointerdown", function (e) {
-    dragging = true; moved = false;
+    dragging = true; moved = false; touchActive = true;
     startX = e.clientX; startY = e.clientY;
     activeId = e.pointerId;
     scene.setPointerCapture(e.pointerId);
@@ -965,13 +1045,13 @@
 
   scene.addEventListener("pointerup", function (e) {
     if (e.pointerId !== activeId) return;
-    dragging = false; activeId = null;
+    dragging = false; activeId = null; touchActive = false;
     if (!moved) scene.classList.toggle("flipped");
     settle();
     armIdle();
   });
   scene.addEventListener("pointercancel", function () {
-    dragging = false; activeId = null;
+    dragging = false; activeId = null; touchActive = false;
     settle(); armIdle();
   });
   scene.addEventListener("pointerleave", function () {
@@ -986,17 +1066,64 @@
   });
   scene.tabIndex = 0;
 
+  /* ------------------------------ gyroscope tilt ------------------------------
+     iOS 13+ needs DeviceOrientationEvent.requestPermission() from inside a
+     user gesture → explicit "Enable tilt" button. Android fires events with
+     no permission step, so we listen quietly and engage on the first real
+     reading. Denied/unsupported → touch-drag keeps working. */
+  var tiltBtn = document.getElementById("tiltBtn");
+  var gyroActive = false, gyroB0 = null, gyroG0 = null;
+
+  function onOrient(e) {
+    if (e.beta == null || e.gamma == null) return;
+    if (!gyroActive) {
+      gyroActive = true;
+      tiltBtn.hidden = true;
+      stopIdle();
+      scene.classList.add("dragging");   /* sensor drives vars directly */
+    }
+    if (gyroB0 === null) { gyroB0 = e.beta; gyroG0 = e.gamma; }
+    if (touchActive) return;             /* fingers beat sensors */
+    var px = Math.min(1, Math.max(0, 0.5 + (e.gamma - gyroG0) / 44));
+    var py = Math.min(1, Math.max(0, 0.5 + (e.beta - gyroB0) / 44));
+    setVars(px, py);
+  }
+  /* recalibrate neutral pose when the tab comes back */
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) { gyroB0 = null; gyroG0 = null; }
+  });
+
+  if (typeof DeviceOrientationEvent !== "undefined") {
+    if (typeof DeviceOrientationEvent.requestPermission === "function") {
+      tiltBtn.hidden = false;
+      tiltBtn.addEventListener("click", function () {
+        DeviceOrientationEvent.requestPermission().then(function (state) {
+          if (state === "granted") {
+            window.addEventListener("deviceorientation", onOrient);
+          } else {
+            tiltBtn.hidden = true;
+            setStatus("Tilt denied — drag still works.");
+          }
+        }).catch(function () {
+          tiltBtn.hidden = true;
+          setStatus("Tilt unavailable — drag still works.");
+        });
+      });
+    } else if (!reduceMotion.matches) {
+      window.addEventListener("deviceorientation", onOrient);
+    }
+  }
+
   /* --------------------------- idle shimmer (a slow orbit) --------------------------- */
   var idleRaf = null;
   function idleLoop(t) {
     var px = 0.5 + Math.sin(t / 2400) * 0.22;
     var py = 0.5 + Math.cos(t / 3100) * 0.16;
-    root.style.setProperty("--px", px.toFixed(4));
-    root.style.setProperty("--py", py.toFixed(4));
+    setVars(px, py);
     idleRaf = requestAnimationFrame(idleLoop);
   }
   function startIdle() {
-    if (reduceMotion.matches || idleRaf) return;
+    if (reduceMotion.matches || idleRaf || gyroActive) return;
     scene.classList.add("dragging");     /* direct-drive the vars */
     idleRaf = requestAnimationFrame(idleLoop);
   }
@@ -1009,7 +1136,7 @@
   }
   function armIdle() {
     clearTimeout(idleTimer);
-    if (!reduceMotion.matches) idleTimer = setTimeout(startIdle, 3500);
+    if (!reduceMotion.matches && !gyroActive) idleTimer = setTimeout(startIdle, 3500);
   }
 
   /* ================================ EXPORT ================================
@@ -1343,8 +1470,8 @@
         renderCard(cardCan, 1.6, px, py);
 
         var bg = vctx.createRadialGradient(ccx, vh * 0.3, 60, ccx, vh * 0.45, vh * 0.75);
-        bg.addColorStop(0, "#191627");
-        bg.addColorStop(1, "#060510");
+        bg.addColorStop(0, "#131120");
+        bg.addColorStop(1, "#050508");
         vctx.globalAlpha = 1;
         vctx.fillStyle = bg;
         vctx.fillRect(0, 0, vw, vh);
@@ -1381,7 +1508,7 @@
     setStatus("Recording 3.5s sweep…");
     try {
       var blob = await recordVideo();
-      setStatus("Video ready (" + (blob.size / 1024 / 1024).toFixed(1) + " MB)");
+      setStatus("Clip ready (" + (blob.size / 1024 / 1024).toFixed(1) + " MB)");
       await deliver(blob, "pull-card.webm");
     } catch (err) {
       setStatus("Video export failed: " + err.message);
@@ -1394,8 +1521,7 @@
   if (params.has("px")) {
     stopIdle();
     scene.classList.add("dragging");
-    root.style.setProperty("--px", params.get("px"));
-    root.style.setProperty("--py", params.get("py") || "0.5");
+    setVars(+params.get("px"), +(params.get("py") || 0.5));
     if (params.has("tier")) setTier(params.get("tier"));
     if (params.get("flip") === "1") scene.classList.add("flipped");
   } else {
