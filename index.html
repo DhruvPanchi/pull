@@ -283,11 +283,13 @@
     gap: 10px;
     font-family: var(--sans);
   }
+  .plate-text { flex: 1; min-width: 0; }
   .plate .name {
     font-size: 18px;
     font-weight: 700;
     letter-spacing: 0.08em;
     white-space: nowrap;
+    overflow: hidden;
   }
   .plate .sub {
     margin-top: 3px;
@@ -295,7 +297,23 @@
     letter-spacing: 0.22em;
     color: var(--ink-dim);
     text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
   }
+  /* Both plate strings are edited in place. The rest of .plate stays
+     pointer-transparent, so drag/flip keeps working everywhere around them. */
+  .plate .name, .plate .sub {
+    pointer-events: auto;
+    touch-action: auto;
+    -webkit-user-select: text;
+    user-select: text;
+    cursor: text;
+    outline: none;
+    border-bottom: 1px dashed transparent;
+    transition: border-color 0.15s;
+  }
+  .plate .name:hover, .plate .sub:hover { border-bottom-color: rgba(255, 255, 255, 0.3); }
+  .plate .name:focus, .plate .sub:focus { border-bottom-color: rgba(255, 255, 255, 0.7); }
   .chip {
     flex: none;
     font-size: 10px;
@@ -563,6 +581,7 @@
   }
   .hint {
     font-size: 9px;
+    line-height: 2;
     letter-spacing: 0.26em;
     text-transform: uppercase;
     color: rgba(143, 140, 166, 0.65);
@@ -605,9 +624,11 @@
               <div class="layer sparkle"></div>
               <div class="layer glare"></div>
               <div class="layer plate">
-                <div>
-                  <div class="name" id="cardName">NEBULA WARDEN</div>
-                  <div class="sub" id="cardSub">Celestial &middot; 042 / 500</div>
+                <div class="plate-text">
+                  <div class="name" id="cardName" contenteditable="true" spellcheck="false"
+                       enterkeyhint="done" aria-label="Card name">NEBULA WARDEN</div>
+                  <div class="sub" id="cardSub" contenteditable="true" spellcheck="false"
+                       enterkeyhint="done" aria-label="Card subtitle">Celestial &middot; 042 / 500</div>
                 </div>
                 <span class="chip" id="chip">Holo</span>
               </div>
@@ -689,7 +710,7 @@
   </details>
 
   <p class="status" id="status"></p>
-  <p class="hint">drag to tilt &middot; tap to flip &middot; drop a photo</p>
+  <p class="hint">drag to tilt &middot; tap to flip<br>tap the name to rename</p>
 </main>
 
 <script>
@@ -709,6 +730,7 @@
   function setStatus(msg) { statusEl.textContent = msg || ""; }
 
   var curPx = 0.5, curPy = 0.5;
+  var editing = false;          /* true while a plate string has focus */
   function setVars(px, py) {
     curPx = px; curPy = py;
     root.style.setProperty("--px", px.toFixed(4));
@@ -1000,6 +1022,7 @@
       b.setAttribute("aria-pressed", b.dataset.tier === name ? "true" : "false");
     });
     applyVars();
+    fitPlate();          /* chip width changed — the name may need to reflow */
   }
   tierBtns.forEach(function (b) {
     b.addEventListener("click", function () { setTier(b.dataset.tier); });
@@ -1059,12 +1082,114 @@
   });
 
   scene.addEventListener("keydown", function (e) {
+    if (e.target !== scene) return;        /* never flip while typing on the plate */
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       scene.classList.toggle("flipped");
     }
   });
   scene.tabIndex = 0;
+
+  /* --------------------------- editable plate text ---------------------------
+     Name and subtitle are contenteditable in place. They stop propagation so a
+     tap to edit never reaches the flip/tilt handlers, and focusing one flattens
+     the card (parking idle + gyro) so you type on a flat surface, not a tilted
+     one. The export renderer reads these same two nodes. */
+  var nameEl = document.getElementById("cardName");
+  var subEl = document.getElementById("cardSub");
+  var PLATE_DEFAULT = { name: "NEBULA WARDEN", sub: "Celestial · 042 / 500" };
+  var PLATE_LIMIT = { name: 24, sub: 34 };
+  /* untouched placeholder selects itself on focus so the first keystroke
+     replaces it; once it's the user's own text, tapping just places a caret */
+  var pristine = { name: true, sub: true };
+
+  function selectAll(el) {
+    var r = document.createRange();
+    r.selectNodeContents(el);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  function caretToEnd(el) {
+    var r = document.createRange();
+    r.selectNodeContents(el);
+    r.collapse(false);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+  }
+
+  /* shrink each plate string until it clears the rarity chip. While a field
+     has focus the browser owns its scroll position (it keeps the caret in
+     view); once it doesn't, snap back to the start so the text reads from
+     its first character instead of sitting mid-scroll. */
+  function fitOne(el, startPx, minPx) {
+    el.style.fontSize = "";
+    var size = startPx;
+    while (size > minPx && el.scrollWidth > el.clientWidth + 0.5) {
+      size -= 0.5;
+      el.style.fontSize = size + "px";
+    }
+    if (document.activeElement !== el) el.scrollLeft = 0;
+  }
+  function fitPlate() {
+    if (!nameEl) return;
+    fitOne(nameEl, 18, 10);
+    fitOne(subEl, 10.5, 8);
+  }
+
+  [[nameEl, "name"], [subEl, "sub"]].forEach(function (pair) {
+    var el = pair[0], key = pair[1];
+
+    ["pointerdown", "pointerup", "click"].forEach(function (ev) {
+      el.addEventListener(ev, function (e) { e.stopPropagation(); });
+    });
+
+    el.addEventListener("focus", function () {
+      editing = true;
+      stopIdle();
+      scene.classList.remove("dragging");   /* ease flat to type on */
+      setVars(0.5, 0.5);
+      /* deferred: iOS re-places the caret at the tap point right after focus */
+      if (pristine[key]) setTimeout(function () { if (pristine[key]) selectAll(el); }, 0);
+    });
+
+    el.addEventListener("blur", function () {
+      editing = false;
+      var text = el.textContent.replace(/\s+/g, " ").trim();
+      el.textContent = text || PLATE_DEFAULT[key];
+      pristine[key] = el.textContent === PLATE_DEFAULT[key];
+      fitPlate();
+      armIdle();
+    });
+
+    el.addEventListener("keydown", function (e) {
+      if (e.key === "Enter") { e.preventDefault(); el.blur(); }
+    });
+
+    el.addEventListener("paste", function (e) {
+      e.preventDefault();
+      var text = ((e.clipboardData || window.clipboardData).getData("text") || "").replace(/\s+/g, " ");
+      try {
+        document.execCommand("insertText", false, text);
+      } catch (err) {
+        el.textContent = (el.textContent + text).slice(0, PLATE_LIMIT[key]);
+        caretToEnd(el);
+      }
+    });
+
+    el.addEventListener("input", function () {
+      pristine[key] = false;
+      if (el.textContent.length > PLATE_LIMIT[key] || /[\n\r]/.test(el.textContent)) {
+        el.textContent = el.textContent.replace(/[\n\r]+/g, " ").slice(0, PLATE_LIMIT[key]);
+        caretToEnd(el);
+      }
+      fitPlate();
+    });
+  });
+
+  addEventListener("resize", fitPlate);
 
   /* ------------------------------ gyroscope tilt ------------------------------
      iOS 13+ needs DeviceOrientationEvent.requestPermission() from inside a
@@ -1083,7 +1208,7 @@
       scene.classList.add("dragging");   /* sensor drives vars directly */
     }
     if (gyroB0 === null) { gyroB0 = e.beta; gyroG0 = e.gamma; }
-    if (touchActive) return;             /* fingers beat sensors */
+    if (touchActive || editing) return;  /* fingers and typing beat sensors */
     var px = Math.min(1, Math.max(0, 0.5 + (e.gamma - gyroG0) / 44));
     var py = Math.min(1, Math.max(0, 0.5 + (e.beta - gyroB0) / 44));
     setVars(px, py);
@@ -1123,7 +1248,7 @@
     idleRaf = requestAnimationFrame(idleLoop);
   }
   function startIdle() {
-    if (reduceMotion.matches || idleRaf || gyroActive) return;
+    if (reduceMotion.matches || idleRaf || gyroActive || editing) return;
     scene.classList.add("dragging");     /* direct-drive the vars */
     idleRaf = requestAnimationFrame(idleLoop);
   }
@@ -1136,7 +1261,7 @@
   }
   function armIdle() {
     clearTimeout(idleTimer);
-    if (!reduceMotion.matches && !gyroActive) idleTimer = setTimeout(startIdle, 3500);
+    if (!reduceMotion.matches && !gyroActive && !editing) idleTimer = setTimeout(startIdle, 3500);
   }
 
   /* ================================ EXPORT ================================
@@ -1327,25 +1452,42 @@
     ctx.fillStyle = pg;
     ctx.fillRect(ix, pTop, iw, plateH);
 
-    var name = document.getElementById("cardName").textContent;
-    var sub = document.getElementById("cardSub").textContent.toUpperCase();
+    var name = document.getElementById("cardName").textContent.replace(/\s+/g, " ").trim();
+    var sub = document.getElementById("cardSub").textContent.replace(/\s+/g, " ").trim().toUpperCase();
     var tx = ix + 14, bottom = iy + ih;
-    try { ctx.letterSpacing = "2.3px"; } catch (e) {}
-    ctx.fillStyle = "#9a96ad";
-    ctx.font = "400 10.5px ui-sans-serif, system-ui, sans-serif";
-    ctx.fillText(sub, tx, bottom - 14);
-    try { ctx.letterSpacing = "1.4px"; } catch (e) {}
-    ctx.fillStyle = "#e8e6f0";
-    ctx.font = "700 18px ui-sans-serif, system-ui, sans-serif";
-    ctx.fillText(name, tx, bottom - 30);
-    try { ctx.letterSpacing = "0px"; } catch (e) {}
 
-    /* chip */
+    /* chip geometry first: user-typed text has to fit in what's left beside it */
     try { ctx.letterSpacing = "1.4px"; } catch (e) {}
     ctx.font = "800 10px ui-sans-serif, system-ui, sans-serif";
     var chipText = tier.label.toUpperCase();
     var chW = ctx.measureText(chipText).width + 18, chH = 21;
     var chX = ix + iw - 14 - chW, chY = bottom - 12 - chH;
+    var textMax = chX - 10 - tx;
+
+    /* shrink to fit, then ellipsize if it still doesn't */
+    function fitText(text, weight, startPx, minPx, spacing) {
+      var size = startPx;
+      try { ctx.letterSpacing = spacing; } catch (e) {}
+      ctx.font = weight + " " + size + "px ui-sans-serif, system-ui, sans-serif";
+      while (size > minPx && ctx.measureText(text).width > textMax) {
+        size -= 0.5;
+        ctx.font = weight + " " + size + "px ui-sans-serif, system-ui, sans-serif";
+      }
+      if (ctx.measureText(text).width <= textMax) return text;   /* fits as-is */
+      var out = text;
+      while (out.length > 1 && ctx.measureText(out + "…").width > textMax) out = out.slice(0, -1);
+      return out + "…";
+    }
+
+    ctx.fillStyle = "#9a96ad";
+    ctx.fillText(fitText(sub, "400", 10.5, 7.5, "2.3px"), tx, bottom - 14);
+    ctx.fillStyle = "#e8e6f0";
+    ctx.fillText(fitText(name, "700", 18, 10, "1.4px"), tx, bottom - 30);
+    try { ctx.letterSpacing = "0px"; } catch (e) {}
+
+    /* chip */
+    try { ctx.letterSpacing = "1.4px"; } catch (e) {}
+    ctx.font = "800 10px ui-sans-serif, system-ui, sans-serif";
     rrPath(ctx, chX, chY, chW, chH, chH / 2);
     var cg = cssLinear(ctx, 120, chX, chY, chW, chH);
     cg.addColorStop(0, tier.chipC[0]);
@@ -1541,10 +1683,17 @@
         return blobToDataURL(b).then(function (u) { return { size: b.size, type: b.type, data: u }; });
       });
     },
-    ready: function () { return !!photoCanvas; }
+    ready: function () { return !!photoCanvas; },
+    setName: function (n, s) {
+      nameEl.textContent = n;
+      if (s != null) subEl.textContent = s;
+      fitPlate();
+      return { name: nameEl.textContent, fontSize: getComputedStyle(nameEl).fontSize };
+    }
   };
 
   applyVars();
+  fitPlate();
 })();
 </script>
 </body>
